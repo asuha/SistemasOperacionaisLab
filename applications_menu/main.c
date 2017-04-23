@@ -8,8 +8,10 @@
 
 //consts
 const int ALARM_TIMEOUT = 5;
+const int TIME_TO_WRITE_URL = 8;
 
 //variables
+int iSignalReceived;
 int iApplicationToFinish;
 char sUrl[150];
 char* sWebBrowser;
@@ -22,7 +24,7 @@ pid_t pTerminal;
 pid_t pFinishApplication;
 
 //functions
-void executeFork(void (*f)(), pid_t *pid);
+void executeFork(void (*functionToExecute)(), pid_t *pid);
 void getStatus(pid_t pProcess, char** sStatus);
 void getInput(int *iOption);
 void printMenu();
@@ -48,6 +50,9 @@ int main(int argc, char* argv[]){
     
     for(;;){
         printMenu();
+        
+        //set alarm to update screen each 5 seconds
+        alarm(ALARM_TIMEOUT);
         
         int iOption;
         getInput(&iOption);
@@ -85,7 +90,8 @@ void configureSigaction(struct sigaction* signalConfig) {
 }
 
 void handleSignals(int signum){
-    //if a signal is received it will just continue to execute the program, which means execute the printMenu again
+    //Defines that a signal was received
+    iSignalReceived = 1;
 }
 
 void printMenu(void){
@@ -100,10 +106,10 @@ void printMenu(void){
 
 char* putPidAndStatusInBaseString(char *sBase, pid_t pProcess, char** sStatus){
     char sReturn[100];
-    //Copy string to array with 100 characters to guarantee it will have space enough to concatenate
+    //Copy string to array with 100 characters to guarantee it will have space enough space to concatenate
     strcpy(sReturn, sBase);
     
-    if ((pProcess) > 0){
+    if (pProcess > 0){
         
         getStatus(pProcess, sStatus);
         
@@ -119,14 +125,14 @@ char* putPidAndStatusInBaseString(char *sBase, pid_t pProcess, char** sStatus){
 
 void getStatus(pid_t pProcess, char** sStatus){
     int iExitStatus;
-    //execute waitpid with WNOHANG so it won't wait
+    //execute waitpid with WNOHANG to return immediately
     pid_t pStatus = waitpid(pProcess, &iExitStatus, WNOHANG);
     
     //pid 0 means the process still executing
     if (pStatus == 0)
         *(sStatus) = "executing";
     
-    else {
+    else
         //status pid eq to process pid means that the execution finished
         if (pStatus == pProcess){
             
@@ -143,21 +149,34 @@ void getStatus(pid_t pProcess, char** sStatus){
                 //termination was not normal
                 *(sStatus) = "aborted";
         }
-    }
     
 }
 
 void getInput(int *iOption){
+    //if signal was received abort so menu is printed
+    
     while( (scanf("%d", iOption) != 1) || (*(iOption) < 1) || (*(iOption) > 5)){
-        printf("Invalid Selection, please enter a valid option. \n");
+        //If it was aborted because of a signal do not print invalid selection and just return
+        if (iSignalReceived != 1)
+            printf("Invalid Selection, please enter a valid option. \n");
+        
         return;
     };
 }
 
 void processInput(iOption){
+    //if signal was received abort and return so menu is printed
+    if (iSignalReceived == 1){
+        iSignalReceived = 0;
+        return;
+    }
     
     switch(iOption) {
         case 1:
+            
+            //increase alarm to have time to write URL
+            alarm(TIME_TO_WRITE_URL);
+            
             printf("%s \n", "Please inform the url you want to access: ");
             scanf(" %149[^\n]s", sUrl);
             
@@ -183,17 +202,14 @@ void processInput(iOption){
     }
 }
 
-
-
-
-void executeFork(void (*f)(), pid_t *pid){
+void executeFork(void (*functionToExecute)(), pid_t *pid){
     switch((*pid)=fork()) {
         case -1:
             printf("falhou\n");
             exit(EXIT_FAILURE);
         case 0:
             printf("processo filho\n");
-            f();
+            functionToExecute();
             break;
         default:
             return;
@@ -232,10 +248,6 @@ void terminal(){
     exit(EXIT_FAILURE);
 }
 
-void quit(){
-    exit(EXIT_SUCCESS);
-}
-
 void finishApplication(){
     switch (iApplicationToFinish) {
         case 1:
@@ -254,5 +266,9 @@ void finishApplication(){
             printf("%s", "Invalid Value");
             exit(EXIT_FAILURE);
     }
+    exit(EXIT_SUCCESS);
+}
+
+void quit(){
     exit(EXIT_SUCCESS);
 }
