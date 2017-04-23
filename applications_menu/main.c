@@ -7,8 +7,8 @@
 #include <sys/wait.h>
 
 //consts
-const int ALARM_TIMEOUT = 5;
-const int TIME_TO_WRITE_URL = 8;
+const int ALARM_DEFAULT_TIMEOUT = 5;
+const int TIME_TO_WRITE = 8;
 
 //variables
 int iSignalReceived;
@@ -52,7 +52,7 @@ int main(int argc, char* argv[]){
         printMenu();
         
         //set alarm to update screen each 5 seconds
-        alarm(ALARM_TIMEOUT);
+        alarm(ALARM_DEFAULT_TIMEOUT);
         
         int iOption;
         getInput(&iOption);
@@ -117,6 +117,7 @@ char* putPidAndStatusInBaseString(char *sBase, pid_t pProcess, char** sStatus){
         
         sprintf(sPidAndStatus, "     (pid: %d, status: %s)", pProcess, *(sStatus));
         
+        //Concatenate the received application option to its pid and status so it will have all its information
         strcat(sReturn, sPidAndStatus);
     }
     
@@ -158,7 +159,7 @@ void getInput(int *iOption){
     while( (scanf("%d", iOption) != 1) || (*(iOption) < 1) || (*(iOption) > 5)){
         //If it was aborted because of a signal do not print invalid selection and just return
         if (iSignalReceived != 1)
-            printf("Invalid Selection, please enter a valid option. \n");
+            printf("%s \n","Invalid Selection, please enter a valid option.");
         
         return;
     };
@@ -174,8 +175,8 @@ void processInput(iOption){
     switch(iOption) {
         case 1:
             
-            //increase alarm to have time to write URL
-            alarm(TIME_TO_WRITE_URL);
+            //increase alarm time to write URL
+            alarm(TIME_TO_WRITE);
             
             printf("%s \n", "Please inform the url you want to access: ");
             scanf(" %149[^\n]s", sUrl);
@@ -189,8 +190,12 @@ void processInput(iOption){
             executeFork(&terminal, &pTerminal);
             break;
         case 4:
+            //increase alarm time to choose which application to finish
+            alarm(TIME_TO_WRITE);
+            
             printf("%s \n", "Please inform the application you want to finish: ");
             scanf("%d", &iApplicationToFinish);
+            
             executeFork(&finishApplication, &pFinishApplication);
             break;
         case 5:
@@ -205,10 +210,9 @@ void processInput(iOption){
 void executeFork(void (*functionToExecute)(), pid_t *pid){
     switch((*pid)=fork()) {
         case -1:
-            printf("falhou\n");
+            printf("%s \n","fork failed");
             exit(EXIT_FAILURE);
         case 0:
-            printf("processo filho\n");
             functionToExecute();
             break;
         default:
@@ -228,8 +232,7 @@ void webBrowser(){
 }
 
 void textEditor(){
-    printf("text Editor\n");
-    
+
     execlp("gedit",
            "gedit",
            NULL);
@@ -239,7 +242,6 @@ void textEditor(){
 }
 
 void terminal(){
-    printf("terminal\n");
     
     execlp("gnome-terminal",
            "terminal",
@@ -263,7 +265,7 @@ void finishApplication(){
             break;
             
         default:
-            printf("%s", "Invalid Value");
+            printf("%s \n", "Invalid Value");
             exit(EXIT_FAILURE);
     }
     exit(EXIT_SUCCESS);
