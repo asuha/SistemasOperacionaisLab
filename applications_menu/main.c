@@ -6,9 +6,12 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+//consts
+const int ALARM_TIMEOUT = 5;
+
 //variables
-char sUrl[150];
 int iApplicationToFinish;
+char sUrl[150];
 char* sWebBrowser;
 char* sTextEditor;
 char* sTerminal;
@@ -19,79 +22,94 @@ pid_t pTerminal;
 pid_t pFinishApplication;
 
 //functions
-void printMenu(void);
-void handleSignals(int signum);
-void prepareSignals(void);
-void initSigaction(struct sigaction*);
-void processInput(int option);
 void executeFork(void (*f)(), pid_t *pid);
-void webBrowser(void);
-void textEditor(void);
-void terminal(void);
+void getStatus(pid_t pProcess, char** sStatus);
+void getInput(int *iOption);
+void printMenu();
+void processInput(int iOption);
+char* putPidAndStatusInBaseString(char* sBase, pid_t pProcess, char** sStatus);
+
+//signals
+void defineSignalHandlers();
+void configureSigaction(struct sigaction*);
+void handleSignals(int signum);
+
+//options handler
+void webBrowser();
+void textEditor();
+void terminal();
 void finishApplication();
-void quit(void);
-char* putPidAndStatusInBaseString(char* sBase, pid_t pProcesso, char* sStatus);
-void getStatus(pid_t pProcesso, char* sStatus);
+void quit();
+
 
 
 int main(int argc, char* argv[]){
-    prepareSignals();
+    defineSignalHandlers();
     
     for(;;){
-        sleep(5);
         printMenu();
+        
+        int iOption;
+        getInput(&iOption);
+        
+        processInput(iOption);
     }
     
 }
 
-void prepareSignals(){
-    struct sigaction confSigaction;
-    initSigaction(&confSigaction);
+void defineSignalHandlers(){
+    struct sigaction sigactionConfig;
+    configureSigaction(&sigactionConfig);
     
-    if (sigaction(SIGINT, &confSigaction, NULL) == -1){
+    if (sigaction(SIGINT, &sigactionConfig, NULL) == -1){
         printf("%s","error preparing SIGINT");
         exit(EXIT_FAILURE);
     }
     
-    if (sigaction(SIGCHLD, &confSigaction, NULL) == -1){
+    if (sigaction(SIGCHLD, &sigactionConfig, NULL) == -1){
         printf("%s", "error preparing SIGCHLD");
+        exit(EXIT_FAILURE);
+    }
+    
+    if (sigaction(SIGALRM, &sigactionConfig, NULL) == -1){
+        printf("%s", "error preparing SIGALRM");
         exit(EXIT_FAILURE);
     }
 }
 
+void configureSigaction(struct sigaction* signalConfig) {
+    memset(signalConfig, 0, sizeof(struct sigaction));
+    signalConfig->sa_flags = 0;
+    sigemptyset(&signalConfig->sa_mask);
+    signalConfig->sa_handler = &handleSignals;
+}
+
 void handleSignals(int signum){
-    printMenu();
+    //if a signal is received it will just continue to execute the program, which means execute the printMenu again
 }
 
 void printMenu(void){
     printf("<<<< Applications Menu >>>>\n");
-    printf("%s", putPidAndStatusInBaseString("1) Web Browser", pWebBrowser, sWebBrowser));
-    printf("%s", putPidAndStatusInBaseString("2) Text Editor", pTextEditor, sTextEditor));
-    printf("%s", putPidAndStatusInBaseString("3) Terminal", pTerminal, sTerminal));
-    printf("%s", putPidAndStatusInBaseString("4) Finalizar Processo", pFinishApplication, sFinishApplication));
+    printf("%s", putPidAndStatusInBaseString("1) Web Browser", pWebBrowser, &sWebBrowser));
+    printf("%s", putPidAndStatusInBaseString("2) Text Editor", pTextEditor, &sTextEditor));
+    printf("%s", putPidAndStatusInBaseString("3) Terminal", pTerminal, &sTerminal));
+    printf("%s", putPidAndStatusInBaseString("4) Finalizar Processo", pFinishApplication, &sFinishApplication));
     printf("5) Quit\n");
     printf("Option: \n");
-    
-    int option;
-    while( (scanf("%d", &option) != 1) || (option < 1) || (option > 5)){
-        printf("Invalid Selection, please enter a valid option. \n");
-        return;
-    };
-    
-    processInput(option);
 }
 
-char* putPidAndStatusInBaseString(char *sBase, pid_t pProcesso, char* sStatus){
+char* putPidAndStatusInBaseString(char *sBase, pid_t pProcess, char** sStatus){
     char sReturn[100];
+    //Copy string to array with 100 characters to guarantee it will have space enough to concatenate
     strcpy(sReturn, sBase);
     
-    if ((pProcesso) > 0){
+    if ((pProcess) > 0){
         
-        getStatus(pProcesso, sStatus);
+        getStatus(pProcess, sStatus);
         
         char sPidAndStatus[50];
-    
-        sprintf(sPidAndStatus, "     (pid: %d, status: %s)", pProcesso, sStatus);
+        
+        sprintf(sPidAndStatus, "     (pid: %d, status: %s)", pProcess, *(sStatus));
         
         strcat(sReturn, sPidAndStatus);
     }
@@ -99,30 +117,48 @@ char* putPidAndStatusInBaseString(char *sBase, pid_t pProcesso, char* sStatus){
     return strcat(sReturn, "\n");
 }
 
-void getStatus(pid_t pProcesso, char* sStatus){
-    
+void getStatus(pid_t pProcess, char** sStatus){
     int iExitStatus;
-    pid_t pStatus = waitpid(pProcesso, &iExitStatus, WNOHANG);
+    //execute waitpid with WNOHANG so it won't wait
+    pid_t pStatus = waitpid(pProcess, &iExitStatus, WNOHANG);
     
+    //pid 0 means the process still executing
     if (pStatus == 0)
-        sStatus = "executing";
+        *(sStatus) = "executing";
     
-    if (pStatus == pProcesso){
-        if(WIFEXITED(iExitStatus)){
-            if (WEXITSTATUS(iExitStatus))
-                sStatus = "failed";
-            sStatus = "finished";
+    else {
+        //status pid eq to process pid means that the execution finished
+        if (pStatus == pProcess){
+            
+            //Check if process finished normally
+            if(WIFEXITED(iExitStatus)){
+                
+                //check if process finished normally with error status
+                if (WEXITSTATUS(iExitStatus))
+                    *(sStatus) = "failed";
+                else
+                    *(sStatus) = "finished";
+                
+            } else
+                //termination was not normal
+                *(sStatus) = "aborted";
         }
-        sStatus = "aborted";
     }
     
 }
 
-void processInput(int option){
+void getInput(int *iOption){
+    while( (scanf("%d", iOption) != 1) || (*(iOption) < 1) || (*(iOption) > 5)){
+        printf("Invalid Selection, please enter a valid option. \n");
+        return;
+    };
+}
+
+void processInput(iOption){
     
-    switch(option) {
+    switch(iOption) {
         case 1:
-            printf("%s", "Please inform the url you want to access: \n");
+            printf("%s \n", "Please inform the url you want to access: ");
             scanf(" %149[^\n]s", sUrl);
             
             executeFork(&webBrowser, &pWebBrowser);
@@ -134,7 +170,7 @@ void processInput(int option){
             executeFork(&terminal, &pTerminal);
             break;
         case 4:
-            printf("%s", "Please inform the application you want to finish: \n");
+            printf("%s \n", "Please inform the application you want to finish: ");
             scanf("%d", &iApplicationToFinish);
             executeFork(&finishApplication, &pFinishApplication);
             break;
@@ -142,11 +178,13 @@ void processInput(int option){
             quit();
             break;
         default:
-            printf("other option\n");
-            exit(0);
+            printf("%s \n", "Invalid Option");
             
     }
 }
+
+
+
 
 void executeFork(void (*f)(), pid_t *pid){
     switch((*pid)=fork()) {
@@ -217,11 +255,4 @@ void finishApplication(){
             exit(EXIT_FAILURE);
     }
     exit(EXIT_SUCCESS);
-}
-
-void initSigaction(struct sigaction* confSignal) {
-    memset(confSignal, 0, sizeof(struct sigaction));
-    confSignal->sa_flags = 0;
-    sigemptyset(&confSignal->sa_mask);
-    confSignal->sa_handler = &handleSignals;
 }
